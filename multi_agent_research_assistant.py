@@ -50,12 +50,10 @@ def create_agent(llm, tools, system_message: str):
             (
                 "system",
                 "You are an expert researcher, collaborating with other assistant researchers, all skilled at researching private companies and producing informative, descriptive and factual analysis."
-                " Use the provided tools to progress towards researching about the particular company."
                 " If you are unable to fully answer, that's okay, other assistant with different tools will"
                 " help with where you left off."
                 " If you or any of the other assistants have the final answer or deliverable,"
                 " prefix your response with FINAL ANSWER so the team knows to stop."
-                " You have access to the following tools: {tool_names}.\n{system_message}",
             ),
             MessagesPlaceholder(variable_name="messages"),
         ]
@@ -67,7 +65,7 @@ def create_agent(llm, tools, system_message: str):
 # }}} 
 # {{{ tools 
 
-tavily_tool = TavilySearchResults(max_results=5)
+tavily_tool = TavilySearchResults(max_results=20)
 # }}} 
 # {{{ CLASS: AgentState 
 
@@ -95,7 +93,7 @@ def agent_node(state, agent, name):
 research_supervisor_agent = create_agent(
     llm,
     [tavily_tool],
-    system_message="You are the the most senior and experienced private equity company researcher. For the company input, check if there is sufficient information available at each step. If not, make sure there is enough information utilizing other agents."
+    system_message="You are the the most senior and experienced private equity company research manager. You have a team of assistants - 'company_overview_research_agent', 'financial_research_agent', 'business_model_agent'. For the company input, delegate each task to different assistants. Check if there is sufficient information available at each step. If not, reach out to the assistant giving directions. Your task is to compile all the information provided by other assistants and organize it as a company research report. If an assistant is struggling to find right context, give directions that might help. The final answer should include all the necessary information in well formatted manner."
 )
 research_supervisor_node = functools.partial(agent_node, agent=research_supervisor_agent, name="research_supervisor")
 
@@ -145,6 +143,23 @@ workflow.add_node("financial_researcher", financial_research_node)
 workflow.add_node("business_model_researcher", business_model_research_node)
 workflow.add_node("call_tool", tool_node)
 
+# {{{ edges 
+
+# workflow.add_edge(
+#     "research_supervisor",
+#     "company_overview_researcher"
+# )
+# workflow.add_edge(
+#     "research_supervisor",
+#     "business_model_researcher"
+# )
+# workflow.add_edge(
+#     "research_supervisor",
+#     "financial_researcher"
+# )
+# }}} 
+# {{{ conditional edges 
+
 workflow.add_conditional_edges(
     "research_supervisor",
     router,
@@ -155,17 +170,27 @@ workflow.add_conditional_edges(
     router,
     {"continue": "financial_researcher", "call_tool": "call_tool", "__end__": END},
 )
+# workflow.add_conditional_edges(
+#     "research_supervisor",
+#     router,
+#     {"continue": "business_model_researcher", "call_tool": "call_tool", "__end__": END}
+# )
+# workflow.add_conditional_edges(
+#     "company_overview_researcher",
+#     router,
+#     {"continue": "business_model_researcher", "call_tool": "call_tool", "__end__": END},
+# )
+# workflow.add_conditional_edges(
+#     "business_model_researcher",
+#     router,
+#     {"continue": "financial_researcher", "call_tool": "call_tool", "__end__": END}
+# )
 workflow.add_conditional_edges(
     "financial_researcher",
     router,
-    {"continue": "company_overview_researcher", "call_tool": "call_tool", "__end__": END},
+    {"continue": "business_model_researcher", "call_tool": "call_tool", "__end__": END},
 )
-workflow.add_conditional_edges(
-    "business_model_researcher",
-    router,
-    {"continue": "company_overview_researcher", "call_tool": "call_tool", "__end__": END}
-)
-
+ 
 workflow.add_conditional_edges(
     "call_tool",
     # Each agent node updates the 'sender' field
@@ -174,12 +199,13 @@ workflow.add_conditional_edges(
     # who invoked the tool
     lambda x: x["sender"],
     {
+        "research_supervisor": "research_supervisor",
         "company_overview_researcher": "company_overview_researcher",
         "financial_researcher": "financial_researcher",
         "business_model_researcher": "business_model_researcher",
-        "research_supervisor": "research_supervisor"
     },
 )
+# }}}
 workflow.set_entry_point("research_supervisor")
 graph = workflow.compile()
 
@@ -189,17 +215,17 @@ from IPython.display import Image, display
 
 try:
     img = graph.get_graph(xray=True).draw_mermaid_png()
-    with open("multi_agent.png", "wb") as f:
+    with open("multi_agent_research_assistant_graph.png", "wb") as f:
         f.write(img)
-    with open("multi_agent.png", "rb") as f:
-        display(Image(f.read()))
+    # with open("multi_agent_research_assistant_graph", "rb") as f:
+        # display(Image(f.read()))
 except Exception as e:
     # This requires some extra dependencies and is optional
     print(f'Exception occured: {e}')
 # }}} 
 
 
-output = graph.invoke({"messages": [HumanMessage(content="""Research for company intuitive.cloud. The research should include the following: 
+output = graph.invoke({"messages": [HumanMessage(content="""Research for US company intuitive.cloud. The research should include the following: 
 1. Company Overview
 2. Company Financials
 3. Company Business Model
