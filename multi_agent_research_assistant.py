@@ -9,28 +9,19 @@ from langchain_core.messages import (
     ToolMessage,
 )
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-
 from langgraph.graph import END, StateGraph
-
-from typing import Annotated
-
 from langchain_community.tools.tavily_search import TavilySearchResults
 from langchain_core.tools import tool
 from langchain_experimental.utilities import PythonREPL
-
-import operator
-from typing import Annotated, Sequence, TypedDict
-
 from langchain_openai import ChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
-
-import functools
-
 from langchain_core.messages import AIMessage
-
 from langgraph.prebuilt import ToolNode
 
-from typing import Literal
+import operator
+from typing import Annotated, Sequence, TypedDict, Literal
+import functools
+from ipdb import set_trace as ipdb
 # }}} 
 # {{{ langsmith keys 
 LANGCHAIN_TRACING_V2=os.getenv('LANGCHAIN_TRACING_V2')
@@ -42,6 +33,8 @@ GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 # llm = ChatOpenAI(model="gpt-4-1106-preview")
 llm = ChatGoogleGenerativeAI(model='gemini-1.5-flash', google_api_key=GEMINI_API_KEY, temperature=0.0)
 # {{{  DEF: create_agent
+                # " If you or any of the other assistants have the final answer or deliverable,"
+                # " prefix your response with FINAL ANSWER so the team knows to stop."
 
 def create_agent(llm, tools, system_message: str):
     """Create an agent"""
@@ -50,10 +43,10 @@ def create_agent(llm, tools, system_message: str):
             (
                 "system",
                 "You are an expert researcher, collaborating with other assistant researchers, all skilled at researching private companies and producing informative, descriptive and factual analysis."
-                " If you are unable to fully answer, that's okay, other assistant with different tools will"
-                " help with where you left off."
-                " If you or any of the other assistants have the final answer or deliverable,"
-                " prefix your response with FINAL ANSWER so the team knows to stop."
+                # " If you are unable to fully answer, that's okay, other assistant with different tools will"
+                # " help with where you left off."
+                " If you think there should be more information, continue. Once you think there is enough descriptive information on the research, prefix your answer with FINAL ANSWER so the team can stop."
+                # " Complete your research within 2 minutes, once done, prefix your answer with FINAL ANSWER so the team can stop."
             ),
             MessagesPlaceholder(variable_name="messages"),
         ]
@@ -65,7 +58,7 @@ def create_agent(llm, tools, system_message: str):
 # }}} 
 # {{{ tools 
 
-tavily_tool = TavilySearchResults(max_results=20)
+tavily_tool = TavilySearchResults(max_results=10)
 # }}} 
 # {{{ CLASS: AgentState 
 
@@ -89,11 +82,14 @@ def agent_node(state, agent, name):
         "sender": name,
     }
 # }}} 
-# {{{ create different agents
+# {{{ create agents
 research_supervisor_agent = create_agent(
     llm,
     [tavily_tool],
-    system_message="You are the the most senior and experienced private equity company research manager. You have a team of assistants - 'company_overview_research_agent', 'financial_research_agent', 'business_model_agent'. For the company input, delegate each task to different assistants. Check if there is sufficient information available at each step. If not, reach out to the assistant giving directions. Your task is to compile all the information provided by other assistants and organize it as a company research report. If an assistant is struggling to find right context, give directions that might help. The final answer should include all the necessary information in well formatted manner."
+    system_message="You are the the most senior and experienced private equity company research manager. You have a team of assistants - 'company_overview_research_agent', 'financial_research_agent', 'business_model_agent', 'key_products_or_services_researcher_agent'. For the company input, delegate each task to different assistants. Your task is to compile all the information provided by other assistants and organize it as a company research report. The final answer should include all the necessary information in well formatted manner."
+# " You can ask for more information to other assistants but only twice. Do not reach out for more information more than twice."
+# " Once you thinkthere is enough information on the research,"
+# " prefix your response with FINAL ANSWER so the team knows to stop. Do not go too deep into research."
 )
 research_supervisor_node = functools.partial(agent_node, agent=research_supervisor_agent, name="research_supervisor")
 
@@ -118,6 +114,13 @@ business_model_agent = create_agent(
 )
 business_model_research_node = functools.partial(agent_node, agent=business_model_agent, name="business_model_researcher")
 
+# key_products_or_services_researcher_agent = create_agent(
+#     llm,
+#     [tavily_tool],
+#     system_message="You are a highly experienced private company researcher skilled at understanding company's key products/services/unique selling points etc. Your goal is to contribute to 'Key Products/Services' part of company research report I'm working on."
+# )
+# key_products_or_services_researcher_node = functools.partial(agent_node, key_products_or_services_researcher_agent, name="key_products_or_services_researcher")
+
 tools = [tavily_tool]
 tool_node = ToolNode(tools)
 # }}} 
@@ -141,10 +144,15 @@ workflow.add_node("research_supervisor", research_supervisor_node)
 workflow.add_node("company_overview_researcher", research_node)
 workflow.add_node("financial_researcher", financial_research_node)
 workflow.add_node("business_model_researcher", business_model_research_node)
+# workflow.add_node("key_products_or_services_researcher", key_products_or_services_researcher_node)
 workflow.add_node("call_tool", tool_node)
 
-# {{{ edges 
+# {{{ edges
 
+# workflow.add_edge(
+#     "research_supervisor",
+#     "key_products_or_services_researcher"
+# )
 # workflow.add_edge(
 #     "research_supervisor",
 #     "company_overview_researcher"
@@ -157,7 +165,7 @@ workflow.add_node("call_tool", tool_node)
 #     "research_supervisor",
 #     "financial_researcher"
 # )
-# }}} 
+# }}}
 # {{{ conditional edges 
 
 workflow.add_conditional_edges(
@@ -190,7 +198,17 @@ workflow.add_conditional_edges(
     router,
     {"continue": "business_model_researcher", "call_tool": "call_tool", "__end__": END},
 )
- 
+workflow.add_conditional_edges(
+    "business_model_researcher",
+    router,
+    {"continue": "research_supervisor", "call_tool": "call_tool", "__end__": END},
+)
+# workflow.add_conditional_edges(
+#     "key_products_or_services_researcher",
+#     router,
+#     {"continue": "research_supervisor", "call_tool": "call_tool", "__end__": END},    
+# )
+
 workflow.add_conditional_edges(
     "call_tool",
     # Each agent node updates the 'sender' field
@@ -203,6 +221,7 @@ workflow.add_conditional_edges(
         "company_overview_researcher": "company_overview_researcher",
         "financial_researcher": "financial_researcher",
         "business_model_researcher": "business_model_researcher",
+        # "key_products_or_services_researcher": "key_products_or_services_researcher"
     },
 )
 # }}}
@@ -229,8 +248,10 @@ output = graph.invoke({"messages": [HumanMessage(content="""Research for US comp
 1. Company Overview
 2. Company Financials
 3. Company Business Model
-Once done, finish.""")]})
+4. Key Products/Services
+Once done, finish.""")]}, {"recursion_limit": 150})
 
+# {{{ stream
 
 # events = graph.stream(
 #     {
@@ -246,3 +267,4 @@ Once done, finish.""")]})
 # for s in events:
 #     print(s)
 #     print("----")
+# }}} 
