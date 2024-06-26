@@ -43,9 +43,9 @@ def create_agent(llm, tools, system_message: str):
             (
                 "system",
                 "You are an expert researcher, collaborating with other assistant researchers, all skilled at researching private companies and producing informative, descriptive and factual analysis."
-                # " If you are unable to fully answer, that's okay, other assistant with different tools will"
-                # " help with where you left off."
-                " If you think there should be more information, continue. Once you think there is enough descriptive information on the research, prefix your answer with FINAL ANSWER so the team can stop."
+                " If you are unable to fully answer, that's okay, other assistant with different tools will"
+                " help with where you left off."
+                # " If you think there should be more information, continue. Once you think there is enough descriptive information on the research, prefix your answer with FINAL ANSWER so the team can stop."
                 # " Complete your research within 2 minutes, once done, prefix your answer with FINAL ANSWER so the team can stop."
             ),
             MessagesPlaceholder(variable_name="messages"),
@@ -65,10 +65,20 @@ tavily_tool = TavilySearchResults(max_results=10)
 class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], operator.add]
     sender: str
+    supervisor_invocations: int
+    finalizing: bool
 # }}} 
 # {{{  DEF: agent_node
 
 def agent_node(state, agent, name):
+    if name == "research_supervisor":
+        state["supervisor_invocations"] += 1
+        if state["supervisor_invocations"] > 3:
+            state["finalizing"] = True 
+    
+    if state['finalizing']:
+        state["messages"].append(HumanMessage(content="Conclude research and compile all the information provided by other assistants and organize it as a company research report. Prefix the answer with 'FINAL ANSWER'."))
+
     result = agent.invoke(state)
     # We convert the agent output into a format that is suitable to append to the global state
     if isinstance(result, ToolMessage):
@@ -80,6 +90,8 @@ def agent_node(state, agent, name):
         # Since we have a strict workflow, we can
         # track the sender so we know who to pass to next.
         "sender": name,
+        "supervisor_invocations": state["supervisor_invocations"],
+        "finalizing": state["finalizing"],
     }
 # }}} 
 # {{{ create agents
@@ -130,6 +142,8 @@ def router(state) -> Literal["call_tool", "__end__", "continue"]:
     # This is the router
     messages = state["messages"]
     last_message = messages[-1]
+    if state["finalizing"]:
+        return "__end__"
     if last_message.tool_calls:
         # The previous agent is invoking a tool
         return "call_tool"
@@ -165,6 +179,10 @@ workflow.add_node("call_tool", tool_node)
 #     "research_supervisor",
 #     "financial_researcher"
 # )
+workflow.add_edge(
+    "research_supervisor",
+    END
+)
 # }}}
 # {{{ conditional edges 
 
@@ -249,7 +267,7 @@ output = graph.invoke({"messages": [HumanMessage(content="""Research for US comp
 2. Company Financials
 3. Company Business Model
 4. Key Products/Services
-Once done, finish.""")]}, {"recursion_limit": 150})
+Once done, finish.""")], "supervisor_invocations": 0, "finalizing": False}, {"recursion_limit": 150})
 
 # {{{ stream
 
