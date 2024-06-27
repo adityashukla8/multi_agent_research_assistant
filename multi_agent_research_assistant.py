@@ -58,7 +58,7 @@ def create_agent(llm, tools, system_message: str):
 # }}} 
 # {{{ tools 
 
-tavily_tool = TavilySearchResults(max_results=10)
+tavily_tool = TavilySearchResults(max_results=20)
 # }}} 
 # {{{ CLASS: AgentState 
 
@@ -73,7 +73,7 @@ class AgentState(TypedDict):
 def agent_node(state, agent, name):
     if name == "research_supervisor":
         state["supervisor_invocations"] += 1
-        if state["supervisor_invocations"] > 3:
+        if state["supervisor_invocations"] > 5:
             state["finalizing"] = True 
     
     if state['finalizing']:
@@ -262,7 +262,7 @@ except Exception as e:
 # }}} 
 
 
-output = graph.invoke({"messages": [HumanMessage(content="""Research for US company intuitive.cloud. The research should include the following: 
+output = graph.invoke({"messages": [HumanMessage(content="""Research for Indian company Zerodha. The research should include the following: 
 1. Company Overview
 2. Company Financials
 3. Company Business Model
