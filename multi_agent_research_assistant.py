@@ -286,7 +286,7 @@ if st.button("Submit"):
         
         st.session_state.chat_history.append({"You": user_input_company_name, "Researcher": output['messages'][-1].content})
 
-        st.session_stat.user_input_company_name = ""
+        st.session_state.user_input_company_name = ""
 
 
         
