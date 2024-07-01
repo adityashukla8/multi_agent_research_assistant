@@ -1,4 +1,3 @@
-numpy
 streamlit
 absl-py==1.4.0
 aiohttp==3.9.5
