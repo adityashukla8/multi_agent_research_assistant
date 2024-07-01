@@ -7,6 +7,5 @@ langgraph
 langchain_experimental
 langchain_openai
 langchain_google_genai
-functools
 typing
 ipdb
