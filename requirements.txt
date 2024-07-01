@@ -135,7 +135,6 @@ proto-plus==1.22.3
 protobuf==3.20.3
 psutil==5.9.5
 pure-eval==0.2.2
-pyarrow==6.0.1
 pydantic==2.7.1
 pydantic_core==2.18.2
 python-dateutil==2.8.2
