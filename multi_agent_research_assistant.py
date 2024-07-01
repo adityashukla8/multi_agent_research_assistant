@@ -22,6 +22,7 @@ import operator
 from typing import Annotated, Sequence, TypedDict, Literal
 import functools
 from ipdb import set_trace as ipdb
+import streamlit as st
 # }}} 
 # {{{ langsmith keys 
 LANGCHAIN_TRACING_V2=os.getenv('LANGCHAIN_TRACING_V2')
@@ -261,13 +262,35 @@ except Exception as e:
     print(f'Exception occured: {e}')
 # }}} 
 
+company_name = 'Zerodha'
+country_name = 'India'
 
-output = graph.invoke({"messages": [HumanMessage(content="""Research for Indian company Zerodha. The research should include the following: 
+# {{{ streamlit 
+
+if 'chat_history' not in st.session_state:
+    st.session_state.chat_history = []
+
+st.title("Company Research Assistant")
+user_input_company_name = st.text_input("Enter company name:", key="user_input")
+
+query_prompt = f"""Research for company {user_input_company_name}. The research should include the following:
 1. Company Overview
 2. Company Financials
 3. Company Business Model
 4. Key Products/Services
-Once done, finish.""")], "supervisor_invocations": 0, "finalizing": False}, {"recursion_limit": 150})
+Once done, finish."""
+
+if st.button("Submit"):
+    if user_input_company_name:
+        output = graph.invoke({"messages": [HumanMessage(content=query_prompt)], "supervisor_invocations": 0, "finalizing": False}, {"recursion_limit": 150})
+        
+        st.session_state.chat_history.append({"You": user_input_company_name, "Researcher": output['messages'][-1].content})
+
+        st.session_stat.user_input_company_name = ""
+
+
+        
+# }}} 
 
 # {{{ stream
 
