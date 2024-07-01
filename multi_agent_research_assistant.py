@@ -288,7 +288,12 @@ if st.button("Submit"):
 
         st.session_state.user_input_company_name = ""
 
+for chat in st.session_state.chat_history:
+    st.write(f"**You**: {chat['You']}")
+    st.write(f"**Researcher**: {chat['Researcher']}")
+    st.write('---')
 
+st.text_input("Enter company name", key='user_input2', on_change=lambda: None)
         
 # }}} 
 
